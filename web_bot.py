@@ -40,8 +40,13 @@ strategy = st.selectbox(
     ["Intraday", "Swing Trade", "Short Term", "Long Term"],
     index=1
 )
-
-def calculate_rsi(data, period=14):
+    st.write("DEBUG")
+    st.write(type(latest))
+    st.write(latest)
+    st.write(type(latest["Close"]))
+    st.write(latest["Close"])
+    st.stop()
+    def calculate_rsi(data, period=14):
     delta = data["Close"].diff()
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
