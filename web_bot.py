@@ -140,7 +140,8 @@ if st.button("Analyze Market"):
         result = ask_claude(symbol, selected_name, strategy, latest, recent_data)
 
         st.subheader(f"{selected_name} / {symbol}")
-        st.metric("Current Price", f"${latest['Close']:.2f}")
+        current_price = float(latest["Close"])
+        st.metric("Current Price", f"${current_price:.2f}")
         st.metric("RSI", f"{latest['RSI']:.2f}")
 
         st.divider()
