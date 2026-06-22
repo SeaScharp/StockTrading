@@ -6,7 +6,6 @@ from anthropic import Anthropic
 st.set_page_config(page_title="AI Financial Market Bot", layout="centered")
 
 st.title("AI Financial Market Analysis Bot")
-st.caption("Stocks / ETFs analysis using Claude AI")
 
 ANTHROPIC_API_KEY = st.secrets["ANTHROPIC_API_KEY"]
 MODEL = st.secrets.get("ANTHROPIC_MODEL", "claude-sonnet-4-5")
@@ -23,10 +22,6 @@ symbols = {
     "Google": "GOOGL",
     "S&P 500 ETF": "SPY",
     "Nasdaq ETF": "QQQ",
-    "Dow Jones ETF": "DIA",
-    "Gold ETF": "GLD",
-    "Silver ETF": "SLV",
-    "Oil ETF": "USO",
 }
 
 selected_name = st.selectbox("Choose Market Symbol", list(symbols.keys()))
@@ -35,20 +30,10 @@ symbol = symbols[selected_name]
 period = st.selectbox("Analysis Period", ["5d", "1mo", "3mo", "6mo"], index=1)
 interval = st.selectbox("Candle Interval", ["15m", "30m", "1h", "1d"], index=2)
 
-strategy = st.selectbox(
-    "Strategy Type",
-    ["Intraday", "Swing Trade", "Short Term", "Long Term"],
-    index=1
-)
-st.write("DEBUG")
-st.write(type(latest))
-st.write(latest)
-st.write(type(latest["Close"]))
-st.write(latest["Close"])
-st.stop()
+strategy = st.selectbox("Strategy Type", ["Intraday", "Swing Trade", "Short Term", "Long Term"], index=1)
+
 def calculate_rsi(data, period=14):
     delta = data["Close"].diff()
-
     gain = delta.clip(lower=0)
     loss = -delta.clip(upper=0)
 
@@ -72,6 +57,9 @@ def get_market_data(symbol, period, interval):
     if df.empty:
         return None
 
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+
     df = df.dropna()
 
     df["SMA_20"] = df["Close"].rolling(20).mean()
@@ -80,19 +68,22 @@ def get_market_data(symbol, period, interval):
     df["High_20"] = df["High"].rolling(20).max()
     df["Low_20"] = df["Low"].rolling(20).min()
 
-    return df.dropna()
+    df = df.dropna()
+
+    if df.empty:
+        return None
+
+    return df
 
 def ask_claude(symbol, selected_name, strategy, latest, recent_data):
     prompt = f"""
-You are a financial market analysis assistant.
-
-Analyze this market using only the data provided.
+Analyze this financial market using only the data provided.
 
 Symbol: {symbol}
 Name: {selected_name}
 Strategy: {strategy}
 
-Latest Market Data:
+Latest:
 Close Price: {latest['Close']}
 RSI: {latest['RSI']}
 SMA 20: {latest['SMA_20']}
@@ -103,7 +94,7 @@ SMA 50: {latest['SMA_50']}
 Recent candles:
 {recent_data}
 
-Return ONLY this exact format:
+Return ONLY this format:
 
 Market Direction: Bullish / Bearish / Neutral
 Best Entry Price: number or range
@@ -111,34 +102,29 @@ Take Profit Price: number
 Stop Loss Price: number
 AI Confidence: percentage
 Brief Reason: one short sentence
-
-Important:
-- Do not give long explanation.
-- Do not say "not financial advice".
-- Be practical.
-- If data is weak or unclear, say Neutral.
 """
 
     response = client.messages.create(
         model=MODEL,
         max_tokens=500,
         temperature=0.2,
-        messages=[
-            {"role": "user", "content": prompt}
-        ]
+        messages=[{"role": "user", "content": prompt}]
     )
 
     return response.content[0].text
 
 if st.button("Analyze Market"):
-    with st.spinner("Fetching market data and analyzing..."):
+    with st.spinner("Analyzing market..."):
         df = get_market_data(symbol, period, interval)
 
         if df is None or df.empty:
-            st.error("No market data found. Try another symbol, period, or interval.")
+            st.error("No enough market data. Try 1mo period with 1h or 1d interval.")
             st.stop()
 
-        latest = df.iloc[-1]
+        latest = df.tail(1).iloc[0]
+
+        current_price = float(df["Close"].iloc[-1])
+        rsi_value = float(df["RSI"].iloc[-1])
 
         recent_data = df.tail(15)[
             ["Open", "High", "Low", "Close", "SMA_20", "SMA_50", "RSI"]
@@ -147,11 +133,8 @@ if st.button("Analyze Market"):
         result = ask_claude(symbol, selected_name, strategy, latest, recent_data)
 
         st.subheader(f"{selected_name} / {symbol}")
-        current_price = float(latest["Close"])
         st.metric("Current Price", f"${current_price:.2f}")
-        st.metric("RSI", f"{latest['RSI']:.2f}")
+        st.metric("RSI", f"{rsi_value:.2f}")
 
         st.divider()
         st.text(result)
-
-        st.caption("Use this for analysis only. Always confirm with your own risk management.")
